@@ -11,6 +11,10 @@
   "dependencies": {
     "@heroicons/react": "^2.2.0",
     "ethers": "^5.7.2",
+    "firebase": "^11.5.0",
+    "firebase-admin": "^13.2.0",
+    "mongodb": "^6.15.0",
+    "mongoose": "^8.13.1",
     "next": "15.2.4",
     "next-auth": "^4.24.11",
     "react": "^19.0.0",
@@ -19,6 +23,8 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
+    "@types/mongodb": "^4.0.6",
+    "@types/mongoose": "^5.11.96",
     "@types/next-auth": "^3.13.0",
     "@types/node": "^20",
     "@types/react": "^19.0.12",

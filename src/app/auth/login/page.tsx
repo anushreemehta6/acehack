@@ -1,23 +1,41 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { auth } from '@/lib/firebase';
-import { 
-  createUserWithEmailAndPassword
-} from 'firebase/auth';
+import { signInWithEmailAndPassword, onAuthStateChanged } from 'firebase/auth';
 
-export default function CreatorSignup() {
+export default function Login() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [formData, setFormData] = useState({
-    name: '',
     email: '',
     password: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    // Check for message in URL
+    const message = searchParams.get('message');
+    if (message) {
+      setMessage(message);
+    }
+
+    // Check if user is already logged in
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      console.log('Auth state changed:', user);
+      if (user) {
+        const userType = localStorage.getItem('userType') || 'creator';
+        router.push(`/dashboard/${userType}`);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [searchParams, router]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -31,18 +49,26 @@ export default function CreatorSignup() {
     e.preventDefault();
     setIsSubmitting(true);
     setError('');
+    setMessage('');
 
     try {
-      console.log('Creating user with email:', formData.email);
+      console.log('Attempting to sign in with:', formData.email);
       
-      // Create user with email and password
-      const userCredential = await createUserWithEmailAndPassword(
+      // Trim whitespace from email
+      const email = formData.email.trim();
+      
+      // Sign in with email and password
+      const userCredential = await signInWithEmailAndPassword(
         auth,
-        formData.email.trim(),
+        email,
         formData.password
       );
 
-      console.log('User created successfully:', userCredential.user);
+      console.log('Sign in successful:', userCredential.user);
+
+      if (!userCredential.user) {
+        throw new Error('No user found after sign in');
+      }
 
       // Get the ID token
       const idToken = await userCredential.user.getIdToken();
@@ -64,55 +90,43 @@ export default function CreatorSignup() {
         throw new Error(data.error || 'Failed to create session');
       }
 
-      // Save user data to MongoDB
-      const saveUserResponse = await fetch('/api/users', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          uid: userCredential.user.uid,
-          email: formData.email.trim(),
-          name: formData.name,
-          userType: 'creator',
-          createdAt: new Date().toISOString(),
-        }),
-      });
-
-      const saveUserData = await saveUserResponse.json();
-      console.log('Save user response:', saveUserData);
-
-      if (!saveUserResponse.ok) {
-        throw new Error(saveUserData.error || 'Failed to save user data');
-      }
-
-      // Store user type in localStorage for profile setup
-      localStorage.setItem('userType', 'creator');
-      console.log('Stored user type in localStorage');
+      // Get user type from localStorage
+      const userType = localStorage.getItem('userType') || 'creator';
+      console.log('User type:', userType);
       
-      // Redirect to creator profile setup
-      console.log('Redirecting to creator profile setup...');
-      router.push('/profile/creator');
+      // Redirect to profile setup if user type is not set
+      if (!localStorage.getItem('userType')) {
+        router.push('/profile/setup');
+      } else {
+        // Redirect to appropriate dashboard
+        router.push(`/dashboard/${userType}`);
+      }
     } catch (err: any) {
-      console.error('Signup error:', err);
-      if (err.code === 'auth/email-already-in-use') {
-        // Redirect to login page with a message
-        router.push('/auth/login?message=Email already registered. Please login.');
-        return;
+      console.error('Login error:', err);
+      // Handle specific Firebase error codes
+      switch (err.code) {
+        case 'auth/invalid-credential':
+        case 'auth/wrong-password':
+          setError('Invalid email or password. Please try again.');
+          break;
+        case 'auth/user-not-found':
+          setError('No account found with this email. Please sign up first.');
+          break;
+        case 'auth/invalid-email':
+          setError('Invalid email format. Please enter a valid email address.');
+          break;
+        case 'auth/too-many-requests':
+          setError('Too many failed attempts. Please try again later.');
+          break;
+        case 'auth/network-request-failed':
+          setError('Network error. Please check your internet connection.');
+          break;
+        case 'auth/internal-error':
+          setError('An internal error occurred. Please try again later.');
+          break;
+        default:
+          setError(err.message || 'Failed to login. Please try again.');
       }
-      if (err.code === 'auth/operation-not-allowed') {
-        setError('Email/password sign up is not enabled. Please contact support.');
-        return;
-      }
-      if (err.code === 'auth/weak-password') {
-        setError('Password should be at least 6 characters long.');
-        return;
-      }
-      if (err.code === 'auth/invalid-email') {
-        setError('Invalid email address.');
-        return;
-      }
-      setError(err.message || 'Failed to create account. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -129,15 +143,21 @@ export default function CreatorSignup() {
           Back to Get Started
         </Link>
         <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-          Sign up as a Project Creator
+          Sign in to your account
         </h2>
         <p className="mt-2 text-center text-sm text-gray-600">
-          Create your account to start raising funds for your innovative projects
+          Welcome back! Please enter your details
         </p>
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
+          {message && (
+            <div className="mb-4 p-4 bg-blue-50 text-blue-700 rounded-md">
+              {message}
+            </div>
+          )}
+
           {error && (
             <div className="mb-4 p-4 bg-red-50 text-red-700 rounded-md">
               {error}
@@ -145,23 +165,6 @@ export default function CreatorSignup() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                Full Name
-              </label>
-              <div className="mt-1">
-                <input
-                  id="name"
-                  name="name"
-                  type="text"
-                  required
-                  value={formData.name}
-                  onChange={handleChange}
-                  className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                />
-              </div>
-            </div>
-
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700">
                 Email address
@@ -189,7 +192,7 @@ export default function CreatorSignup() {
                   id="password"
                   name="password"
                   type="password"
-                  autoComplete="new-password"
+                  autoComplete="current-password"
                   required
                   value={formData.password}
                   onChange={handleChange}
@@ -204,7 +207,7 @@ export default function CreatorSignup() {
                 disabled={isSubmitting}
                 className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
               >
-                {isSubmitting ? 'Creating account...' : 'Create Account'}
+                {isSubmitting ? 'Signing in...' : 'Sign in'}
               </button>
             </div>
           </form>
